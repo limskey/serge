@@ -1,3 +1,9 @@
+FROM rust:1.67 as llama_compiler
+
+WORKDIR /usr/src/app
+RUN git clone https://github.com/rustformers/llama-rs.git
+RUN cd llama-rs && cargo build --release
+
 # Base image for node
 FROM node:19 as node_base
 
@@ -10,9 +16,11 @@ FROM ubuntu:22.04 as base
 ARG DEBIAN_FRONTEND=noninteractive
 ENV TZ=Europe/Amsterdam
 
+RUN mkdir -p /data/convs/
+
 WORKDIR /usr/src/app
 
-COPY --chmod=0755 scripts/compile.sh .
+COPY --from=llama_compiler --chown=0755 /usr/src/app/llama-rs/target/release/llama-cli /usr/local/bin/llama-rs
 
 # Install MongoDB and necessary tools
 RUN apt update && \
@@ -20,8 +28,7 @@ RUN apt update && \
     wget -qO - https://www.mongodb.org/static/pgp/server-6.0.asc | apt-key add - && \
     echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/6.0 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-6.0.list && \
     apt-get update && \
-    apt-get install -y mongodb-org && \
-    git clone https://github.com/ggerganov/llama.cpp.git --branch master-5a5f8b1
+    apt-get install -y mongodb-org
 
 RUN pip install --upgrade pip
 
@@ -36,7 +43,6 @@ RUN npm ci
 
 COPY --chmod=0755 scripts/dev.sh /usr/src/app/dev.sh
 CMD ./dev.sh
-
 # Build frontend
 FROM node_base as frontend_builder
 
